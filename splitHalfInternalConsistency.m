@@ -3,16 +3,21 @@ function [rs_mu, rs_sig, rs_dist] = splitHalfInternalConsistency(data, func, spl
 % data is standard [s,m,nm,sel], func flag, 
 % M: numTrials/condition to consider, max possible if undefined
 
+    corrtype = getCorrelationType();
+    if isempty(corrtype); corrtype = 'spearman'; end;
+    N = getNumSplitHalves();
+    if isempty(N); N = 100; end;
+
+    
     s = data(:,1); % sample category
     m = data(:,2); % match test category
     nm = data(:,3); % nonmatch test category
     us = unique(s); % all categories
     Ns = length(us); % number of categories
-    N = 100; % number of samples for IC
     
     if size(data,1) > 10^6; N = 100; end;
     
-    if ~exist('splits_M', 'var')
+    if ~exist('splits_M', 'var') || isempty(splits_m)
         splits_M = 10^6; % max value of M;
         splits_type = [];
     end
@@ -33,6 +38,7 @@ function [rs_mu, rs_sig, rs_dist] = splitHalfInternalConsistency(data, func, spl
     [rs_mu, rs_sig] = grpstats(rs_dist, [], {'mean', 'std'});
     
     % compute metrics on splits and correlate
+    
     function rs = getInternalConsistency(ind)
         
         metric = [];
@@ -42,8 +48,13 @@ function [rs_mu, rs_sig, rs_dist] = splitHalfInternalConsistency(data, func, spl
         end
     
         t = isfinite(metric(:,1)) & isfinite(metric(:,2)); 
-        rs = corr(metric(t,:), 'type', 'spearman'); 
-        rs = sb_correct(rs(1,2));
+        if sum(t) == 0; 
+            display('Splithalf error: Not enough data.'); 
+            rs = nan;
+        else
+            rs = corr(metric(t,:), 'type', corrtype); 
+            rs = sb_correct(rs(1,2));
+        end
     end
     
     % spearman brown correction

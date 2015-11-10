@@ -1,5 +1,5 @@
 function metric = behaviouralMetrics(data, func)
-%  function metric = behaviouralMetrics(data, func)
+%  function metric = behaviouralMetrics(data, func)- rishir
 % 0 : performance
 % 1 : cmatvec
 % 2 : dprime
@@ -14,18 +14,26 @@ function metric = behaviouralMetrics(data, func)
 % 11 : percorr
 % 12 : pid
 
+
+%% Route image-level metrics here
+    if ~isempty(strfind(func, 'imglvl'))
+        metric = imglvl_behaviouralMetrics(data, func);
+        return;
+    end
+
+%% Init
     s = data(:,1); % sample category
     m = data(:,2); % match test category
     nm = data(:,3); % nonmatch test category
     sel = data(:,4); % selected category/similarity rating
-    
     if size(data,2) > 4;
-        rt_img = data(:,5); % reaction time or img-index
+        rt = data(:,5); % reaction time
     end
     
     us = unique(s); % all categories
     Ns = length(us); % number of categories
-    
+   
+%% Parse
     if strcmp(func, 'performance') == 1
         func = 0 ;
     elseif strcmp(func, 'cmatvec') == 1
@@ -54,35 +62,11 @@ function metric = behaviouralMetrics(data, func)
         func = 12;
     elseif strcmp(func, 'pid2') == 1
         func = 13;
-    elseif strcmp(func, 'imgperf') == 1
-        func = 14;
-    elseif strcmp(func, 'imgdprime') == 1
-        func = 15;
-    elseif strcmp(func, 'imgconf') == 1
-        func = 16;
     end
     
+%% Compute
     if func == 0 % performance
         metric = sum(s == sel) / length(s);
-        
-    elseif func == 0.5 % percent correct over tasks
-        pcorr = ones(Ns*(Ns-1)/2,1).*NaN;
-        
-        count = 0;
-        for i = 1:Ns
-            si = us(i);
-            for j = i+1:Ns
-                sj = us(j);
-                tr = (m == si & nm== sj) | (m == sj & nm == si);
-                count = count+1;
-                if sum(tr) == 0
-                    pcorr(count) = NaN;
-                else
-                    pcorr(count) = sum(sel(tr) == s(tr)) / sum(tr);
-                end
-            end
-        end
-        metric = pcorr;
         
     elseif func == 1% pseudo confusion matrix - unwrapped
         
@@ -244,12 +228,12 @@ function metric = behaviouralMetrics(data, func)
                 sj = us(j);
                 tr = (m == si & nm== sj) | (m == sj & nm == si);
                 count = count+1;
-                rt_tmp = rt_img(tr);
+                rt_tmp = rt(tr);
                 reacTime(count) = nanmean(rt_tmp(rt_tmp < maxVal));
             end
         end
         metric = reacTime;  
-    elseif func == 11% percent correct
+    elseif func == 11 % percent correct
         
         percorr = nan(Ns*(Ns-1)/2,1);
         count = 0;
@@ -292,79 +276,9 @@ function metric = behaviouralMetrics(data, func)
             end
         end
         metric = pid;
-        
-    elseif func == 14% image-level performance
-        
-        img = data(:,5);
-        succ = data(:,1) == data(:,4);
-        t = ~isnan(img);
-        [a,c] = grpstats(succ(t), img(t), {'mean','gname'});
-        c = str2double(c);
-        mu = nan(2400,1);
-        mu(c) = a;
-        metric = mu;
-        
-    elseif func == 15% image-level unbiased performance
-        uimg = 1:2400;
-        uobj = 0:Ns-1;
-        nImg = numel(uimg);
-        nimg_percat = 100;
-        img_i = rt_img;
-        
-        C1 = rr_confusionmat(img_i, sel, uimg, uobj);
-        C2 = rr_confusionmat(img_i,m,uimg, uobj) ...
-            + rr_confusionmat(img_i,nm,uimg, uobj);
-        C = C1;
-        C(C2 == 0) = nan;
-        
-        true_obj = floor((uimg-1)./nimg_percat);
-        C3 = rr_confusionmat(uimg,true_obj,uimg, uobj);
-        
-        C_rowsum = nansum(C,2);
-        
-        maxVal = 10;
-        unbiased_perf = nan(nImg,1);
-        for i = 1:nImg
-            cat_i = logical(C3(i,:));
-            hr = C(i,cat_i) ./ C_rowsum(i);
-            tmp = C3(:,cat_i) == 0;
-            fp = nanmean(C(tmp,cat_i) ./ C_rowsum(tmp));
-            unbiased_perf(i) = min(norminv(hr,0,1) - norminv(fp,0,1), maxVal);
-        end
-        
-        metric = unbiased_perf;
-        
-    elseif func == 16% image-level confusion
-        uimg = 1:2400;
-        uobj = 0:Ns-1;
-        nImg = numel(uimg);
-        nimg_percat = 100;
-        img_i = rt_img;
-        
-        C1 = rr_confusionmat(img_i, sel, uimg, uobj);
-        C2 = rr_confusionmat(img_i,m,uimg, uobj) ...
-            + rr_confusionmat(img_i,nm,uimg, uobj);
-        C = C1./C2;
-        C(C2 == 0) = nan;
-        
-        true_obj = floor((uimg-1)./nimg_percat);
-        C3 = rr_confusionmat(uimg,true_obj,uimg, uobj);
-        
-        selector = true(size(C));
-        selector(C3 > 0) = false;
-        
-        C = C(selector);
-        metric = C(:);
-        
+    
     end
     
-    
-    %% Helper functions
-    function C = rr_confusionmat(G1, G2, o1, o2)
-        [C_,o] = confusionmat(G1, G2);
-        t1 = find(ismember(o,o1));
-        t2 = find(ismember(o,o2));
-        C = C_(t1,t2);
-    end
+
 
 end
