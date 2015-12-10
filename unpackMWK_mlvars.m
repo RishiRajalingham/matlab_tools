@@ -2,7 +2,7 @@ function unpackMWK_mlvars(filename)
 
     %% Initialize
     addpath('/Library/Application Support/MWorks/Scripting/Matlab')
-    addpath('/mindhive/dicarlolab/u/rishir/lib/matlab_tools/MWK_MATLAB/')
+    addpath(genpath('/mindhive/dicarlolab/u/rishir/lib/matlab_tools/MWK_MATLAB/'))
     if nargin < 1
         [fn, pathfn] = uigetfile('.mwk');
         filename = [pathfn, fn];
@@ -17,7 +17,7 @@ function unpackMWK_mlvars(filename)
     codec = codec([code_ind,tag_ind],:);
     
     %% Get codes for event tagnames
-    ncodes = 15;
+    ncodes = 13;
     codesOI = nan(ncodes,1); 
     
     % Scalar variables
@@ -36,8 +36,23 @@ function unpackMWK_mlvars(filename)
         end
     end
     
-    ncodes = sum(~isnan(codesOI));
-    display('Retrieved codes...');
+    extra_codes = {'sample_brightness_corrected', 'sample_radius'};
+    extra_codesOI = nan(length(extra_codes),1);
+    for var_id = 1:length(extra_codes)
+        try
+            varname = extra_codes{var_id};
+            t = strcmp(varname, codec(2,:));
+            tmp = codec(1,t);
+            extra_codesOI(var_id) = double(tmp{1,1});
+        catch rr_excep
+            display(rr_excep)
+        end
+    end
+    
+    codesOI = [codesOI; extra_codesOI];
+    codesOI = codesOI(~isnan(codesOI));
+    ncodes = length(codesOI);
+    fprintf(1, 'Retrieved %d codes... \n', ncodes);
 
     %% Get trial times to sync from
     [tsync, sync] = getTimeStampedData(syncCode);
@@ -51,16 +66,25 @@ function unpackMWK_mlvars(filename)
     t1 = find(sync == 1);   t0 = find(sync == 0);
     t10 = intersect(t1, t0-1); % all 1s followed by 0
     N = length(t10);
-    display(['Collecting ', num2str(N), ' trials of scalar data ']);
+    fprintf(1, 'Collecting %d trials of scalar data \n', N);
     
+    ttrial_mu = nanmean(diff(tsync(t10)));
+    fprintf(1, 'Avg trial duration : %f \n', ttrial_mu);
     %% Get scalar event data from trials
     allTrials = nan(N,ncodes);
     for i = 1:N
         start_sync = double(tsync(t10(i)));
         end_sync = double(tsync(t10(i)+1));
+        start_sync_v2 = end_sync - ttrial_mu;
         for ci = 1:ncodes
             t_ = start_sync < tcode{ci} & tcode{ci} < end_sync;
-            allTrials(i,ci) = xcode{ci}(t_);
+            if sum(t_) ~= 0
+                allTrials(i,ci) = xcode{ci}(t_);
+            else
+                t_ = find(start_sync_v2 < tcode{ci} & tcode{ci} < end_sync, 1, 'last');
+                allTrials(i,ci) = xcode{ci}(t_);
+            end
+            
         end
     end
     save(outfn, 'allTrials');

@@ -28,6 +28,8 @@ function metric = imglvl_behaviouralMetrics(data, func)
         func = 4;
     elseif strcmp(func, 'imglvl_pid') == 1 
         func = 5;
+    elseif strcmp(func, 'imglvl_performance_norm') == 1
+        func = 6;
     end
    
 %% Compute
@@ -94,6 +96,14 @@ function metric = imglvl_behaviouralMetrics(data, func)
     elseif func == 5% unique id for each image-cat pair
         pid = img.*1000 + nm;
         metric = pid;
+    elseif func == 6% image-performance normalized by object performance
+        mu = imglvl_behaviouralMetrics(data, 'imglvl_performance');
+        mu_n = mu;
+        for ni = 1:Ns
+            imgi = (ni-1)*nimg_perobj + 1 : (ni)*nimg_perobj;
+            mu_n(imgi) = (mu(imgi) - nanmean(mu(imgi))) ./ nanstd(mu(imgi));
+        end
+        metric = mu_n;
     end
     
     

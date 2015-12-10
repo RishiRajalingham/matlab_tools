@@ -5,17 +5,16 @@ function [rs_mu, rs_sig, rs_dist] = splitHalfInternalConsistency(data, func, spl
 
     corrtype = getCorrelationType();
     if isempty(corrtype); corrtype = 'spearman'; end;
+    
     N = getNumSplitHalves();
     if isempty(N); N = 100; end;
-
+%     if size(data,1) > 10^6; N = 100; end;
     
-    s = data(:,1); % sample category
-    m = data(:,2); % match test category
-    nm = data(:,3); % nonmatch test category
-    us = unique(s); % all categories
-    Ns = length(us); % number of categories
-    
-    if size(data,1) > 10^6; N = 100; end;
+%     s = data(:,1); % sample category
+%     m = data(:,2); % match test category
+%     nm = data(:,3); % nonmatch test category
+%     us = unique(s); % all categories
+%     Ns = length(us); % number of categories
     
     if ~exist('splits_M', 'var') || isempty(splits_m)
         splits_M = 10^6; % max value of M;
@@ -30,6 +29,9 @@ function [rs_mu, rs_sig, rs_dist] = splitHalfInternalConsistency(data, func, spl
         N = length(splits);
     end
     
+    % get size of metric for allocation
+    nd_metric = size(behaviouralMetrics(data, func),1);
+    
     rs_dist = zeros(N,1);
     for ni = 1:N
         rs_dist(ni) = getInternalConsistency(splits{ni});
@@ -41,10 +43,15 @@ function [rs_mu, rs_sig, rs_dist] = splitHalfInternalConsistency(data, func, spl
     
     function rs = getInternalConsistency(ind)
         
-        metric = [];
+        metric = nan(nd_metric,2);
         for i = 1:2
             ii = ind{i};
-            metric = [metric, behaviouralMetrics(data(ii,:), func)];
+            try
+            metric(:,i) = behaviouralMetrics(data(ii,:), func);
+            catch
+                size(behaviouralMetrics(data(ii,:), func))
+                size(metric)
+            end
         end
     
         t = isfinite(metric(:,1)) & isfinite(metric(:,2)); 
