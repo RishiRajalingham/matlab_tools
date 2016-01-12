@@ -30,6 +30,8 @@ function metric = imglvl_behaviouralMetrics(data, func)
         func = 5;
     elseif strcmp(func, 'imglvl_performance_norm') == 1
         func = 6;
+    elseif strcmp(func, 'imglvl_dprimeovo') == 1
+        func = 7;
     end
    
 %% Compute
@@ -104,10 +106,41 @@ function metric = imglvl_behaviouralMetrics(data, func)
             mu_n(imgi) = (mu(imgi) - nanmean(mu(imgi))) ./ nanstd(mu(imgi));
         end
         metric = mu_n;
+    elseif func == 7
+        C1 = rr_confusionmat(img, sel, uimg, us);
+        C2 = rr_confusionmat(img, m, uimg, us) ...
+            + rr_confusionmat(img, nm, uimg, us);
+        C = C1;
+        C(C2 == 0) = nan;
+        
+        true_obj = floor((uimg-1)./nimg_perobj);
+        C3 = rr_confusionmat(uimg, true_obj, uimg, us);
+       
+        unbiased_perf = nan(nImg, Ns);
+        for i = 1:nImg
+            % which category is this image
+            cat_i = find(C3(i,:) == 1); 
+            for nsi = 1:Ns
+                if nsi == cat_i; continue; end;
+                % what images are not in this category
+                ncat_i = C3(:,cat_i) == 0; 
+                C2x2 = [C(i,[cat_i,nsi]); C(ncat_i,[cat_i, nsi])];
+                unbiased_perf(i,nsi) = dprime_from2x2(C2x2); 
+            end
+        end
+        
+        metric = unbiased_perf(:);
     end
     
     
     %% Helper functions
+    function dp = dprime_from2x2(C2x2)
+        maxVal = 5;
+        hr_ = C2x2(1,1) ./ nansum(C2x2(1,:),2);
+        fp_ = nansum(C2x2(2:end,1)) ./ nansum(nansum(C2x2(2:end,:),2));
+        dp = norminv(hr_,0,1) - norminv(fp_,0,1);
+        dp = min(dp, maxVal);
+    end
     
     function CC = rr_confusionmat(G1, G2, o1, o2)
         [C_,o] = confusionmat(G1, G2);
