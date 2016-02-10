@@ -64,6 +64,9 @@ function metric = imglvl_behaviouralMetrics(data, func)
             cat_i = logical(C3(i,:));
             hr = C(i,cat_i) ./ C_rowsum(i);
             tmp = C3(:,cat_i) == 0;
+		if sum(cat_i) == 0 | sum(tmp) == 0
+			continue;
+		end
             fp = nanmean(C(tmp,cat_i) ./ C_rowsum(tmp));
             up_ = norminv(hr,0,1) - norminv(fp,0,1);
             if ~isnan(up_)
