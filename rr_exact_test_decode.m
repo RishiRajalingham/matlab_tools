@@ -1,4 +1,4 @@
-function p = rr_exact_test_decode(X,Y, opt)
+function out = rr_exact_test_decode(X,Y, opt)
 % function p = rr_exact_test_proj(x_null, x_obs, mode)
 % For arbitrarily high dimensional data, we can infer whether two
 % distributions are different by attempting to decode the dist label, and
@@ -14,44 +14,66 @@ function p = rr_exact_test_decode(X,Y, opt)
 % differences in variance will be detected. i.e. these samples were
 % generated from different distributions.
 
+    out = [];
+    
     if ~exist('Y', 'var') || isempty(Y)
-        fprintf(1, 'Error: Y is empty')
-        p = nan;
+        fprintf(1, 'Error: Y is empty')    
         return;
     end
-
+    [nsx,ndx] = size(X);
+    [nsy,ndy] = size(Y);
+    if ndx ~= ndy
+        fprintf(1, 'Error: X,Y dimension mismatch')    
+        return;
+    end
+    
     if ~exist('opt', 'var')
-        fprintf(1, 'Default opt')
+        opt.cls = 'lda';
         opt.k = 2;
         opt.nshuf = 100;
         opt.dist_type = 'Normal';
     end
 
-    [nsx,ndx] = size(X);
-    [nsy,ndy] = size(Y);
-    assert(ndx == ndy);
-    k = opt.k;
-    nshuf = opt.nshuf;
-
+     
+    %% Format data
     data = cat(1, X, Y);
     label = cat(1, zeros(nsx,1), ones(nsy,1));
 
-    % True error rate
-    SVMModel = fitcsvm(data,label,'Standardize',true);
-    CVSVMModel = crossval(SVMModel, 'KFold', k);
-    err = kfoldLoss(CVSVMModel);
-    
-    % Shuffled error distribution
-    err_s = nan(nshuf,1);
-    for si = 1:nshuf
+    %% Decode (true/shuffled)
+    err = decode(data, label);
+    err_s = nan(opt.nshuf,1);
+    for si = 1:opt.nshuf
         label_shuf = label(randperm(length(label)));
-        SVMModel = fitcsvm(data,label_shuf,'Standardize',true);
-        CVSVMModel = crossval(SVMModel, 'KFold', k);
-        err_s(si) = kfoldLoss(CVSVMModel);
+        err_s(si) = decode(data, label_shuf);
     end
     
-    % Convert to p-value
-    pd = fitdist(err_s,opt.dist_type);
+    %% Convert to p-value
+    pd = fitdist(err_s, opt.dist_type);
     p = cdf(pd, err);
+    
+    out.p = p;
+    out.err = err;
+    out.err_s = err_s;
+    
+    %% Helpers
+    function loss = decode(dat, lbl)
+        if strcmp(opt.cls, 'svm')
+            loss = decode_svm(dat, lbl);
+        elseif strcmp(opt.cls, 'lda')
+            loss = decode_lda(dat, lbl);
+        end
+    end
+    
+    function loss = decode_svm(dat, lbl)
+        SVMModel = fitcsvm(dat,lbl,'Standardize',false);
+        CVSVMModel = crossval(SVMModel, 'KFold', opt.k);
+        loss = kfoldLoss(CVSVMModel);
+    end
+
+    function loss = decode_lda(dat, lbl)
+        Model = fitcdiscr(dat,lbl);
+        CVModel = crossval(Model, 'KFold', opt.k);
+        loss = kfoldLoss(CVModel);
+    end
 
 end
