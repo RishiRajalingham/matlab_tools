@@ -1,75 +1,89 @@
-function out = rr_NHST_exact_decode(X,Y, opt)
-% function p = rr_NHST_exact_decode(x_null, x_obs, mode)
+function out = rr_NHST_exact_decode(X,Y,opt)
+% function p = rr_NHST_exact_decode(X, Y, mode)
 % NULL HYPOTHESIS STATISTIC TESTING for high dimensional data, via decoding
 % For arbitrarily high dimensional data, we can infer whether two
 % distributions are overlapping by projecting onto the best one-dimensional
-% subspace (optimized on held-out samples).
-
+% subspace (optimized on *held-out* data).
+%
 % This is a generalization of exact tests for high dimensional data and 
 % inferences. Univariate exact tests methods test the null 
 % hypothesis that the two sets of values are the same (overlapping).
 % Here, the null hypothesis is the same, except for a particular univariate
 % distributions are the same, up to differences that
 % can be observed by the decoders used.
+%
+% X,Y are cells of size (niter,2), where the second dimension corresponds
+% to estimates from split halves of *independent* observations.
+% opt has fieldnames: 
+%   'cls': ('lda'/'svm') for classifier optimization
+%   'del_fn': all pairwise deltas? 0/1
 
+    % Parse options
+    if ~exist('opt', 'var') 
+        opt = [];
+    end
+    cls = rr_pop_opts(opt, 'cls', 'lda');
+    del_fn = rr_pop_opts(opt, 'del_fn', 0); % correspondence, or all pairwise?
+    
+    % Ensure that train/test folds exist
+    k = 2;
+    assert( iscell(X) & iscell(Y) );
+    assert( size(X,1) == size(Y,1) );   niter = size(X,1);
+    assert( (size(X,2) == k) & (size(Y,2) == k) );
+    assert( (size(X{1},2) == size(Y{1},2)) ); nd = size(X{1},2);
+    
+    % Run
+    [X_proj, Y_proj, W] = crossval_linear_remap(X,Y);
+    [p_,p] = get_univariate_pval(X_proj, Y_proj);
     out = [];
-    
-    if ~exist('Y', 'var') || isempty(Y)
-        fprintf(1, 'Error: Y is empty')    
-        return;
-    end
-    
-    [nsx,ndx] = size(X);
-    [nsy,ndy] = size(Y);
-    if ndx ~= ndy
-        fprintf(1, 'Error: X,Y dimension mismatch')    
-        return;
-    end
-    
-    if ~exist('opt', 'var')
-        opt.cls = 'lda';
-        opt.k = 2;
-        opt.nshuf = 100;
-        opt.dist_type = 'Normal';
-    end
-    
-    data = cat(1, X, Y);
-    label = cat(1, zeros(nsx,1), ones(nsy,1));
-    
-    % Use some folds to optimize the linear projection. Project held-out
-    % fold onto this line to get univariate variable.
-    inds = crossvalind('kfold', label, opt.k);
-    tr = inds ~= 1;
-    dat_tr = data(tr,:);     lbl_tr = label(tr,:);
-    dat_te = data(~tr,:);    lbl_te = label(~tr,:);
-    
-    if strcmp(opt.cls, 'svm')
-        Model = fitcsvm(dat_tr,lbl_tr, 'Standardize',true);
-        w = (Model.Beta);
-        m = dat_te * w;
-    elseif strcmp(opt.cls, 'lda')
-        Model = fitcdiscr(dat_tr,lbl_tr);
-        w = Model.Coeffs(1,2).Linear;
-        m = dat_te * w;
-    end
-        
-    X_proj = m(lbl_te == 0);
-    Y_proj = m(lbl_te == 1);
-    
-    % exact test on univariate variables
-    del = X_proj - Y_proj;
-    
-    pd = fitdist(del, opt.dist_type);
-    p_ = cdf(pd, 0);
-    p = min(p_, 1-p_)*2;
-    
+    out.p = p;
     out.p_left = p_;
     out.p_right = 1-p_;
-    out.p = p;
     out.X_proj = X_proj;
     out.Y_proj = Y_proj;
+    out.W = W;
     
-
+    function [X_proj, Y_proj, W] = crossval_linear_remap(X,Y)
+        X_proj = [];
+        Y_proj = [];
+        W = nan(niter,k,nd);
+        for iter = 1:niter
+            for ki = 1:k
+                kj = k-ki+1;
+                dat_tr = cat(1, X{iter,ki}, Y{iter,ki});
+                lbl_tr = cat(1, zeros(size(X{iter,ki},1),1), ones(size(Y{iter,ki},1),1));
+                dat_te = cat(1, X{iter,kj}, Y{iter,kj});
+                lbl_te = cat(1, zeros(size(X{iter,kj},1),1), ones(size(Y{iter,kj},1),1));
+                
+                if strcmp(cls, 'svm')
+                    Model = fitcsvm(dat_tr,lbl_tr, 'Standardize',true);
+                    w = (Model.Beta);
+                    m = dat_te * w;
+                elseif strcmp(cls, 'lda')
+                    Model = fitcdiscr(dat_tr,lbl_tr);
+                    w = Model.Coeffs(1,2).Linear;
+                    m = dat_te * w;
+                end
+                
+                X_proj = cat(1, X_proj, m(lbl_te == 0));
+                Y_proj = cat(1, Y_proj, m(lbl_te == 1));
+                W(iter,ki,:) = w;
+            end
+        end
+    end
   
+    function [p_,p] = get_univariate_pval(X_proj, Y_proj)
+        signeddistfun = @(a,b) (a-b);
+
+        if del_fn == 0
+            del = signeddistfun(X_proj,Y_proj); 
+        elseif del_fn == 1
+            del = pdist2(X_proj, Y_proj, signeddistfun);
+        end
+        del = del(:);
+        [~,pdf_x,x,~] = kde(del);
+        p_ = sum(pdf_x(x<=0))./sum(pdf_x);
+        p = min(p_, 1-p_)*2;
+    end
 
 end
