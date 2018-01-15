@@ -23,7 +23,6 @@ function out = rr_NHST_exact_decode(X,Y,opt)
         opt = [];
     end
     cls = rr_pop_opts(opt, 'cls', 'lda');
-    del_fn = rr_pop_opts(opt, 'del_fn', 0); % correspondence, or all pairwise?
     
     % Ensure that train/test folds exist
     k = 2;
@@ -34,7 +33,7 @@ function out = rr_NHST_exact_decode(X,Y,opt)
     
     % Run
     [X_proj, Y_proj, W] = crossval_linear_remap(X,Y);
-    [p_,p] = get_univariate_pval(X_proj, Y_proj);
+    [p_,p] = rr_exact_test(X_proj, Y_proj, opt);
     out = [];
     out.p = p;
     out.p_left = p_;
@@ -72,18 +71,6 @@ function out = rr_NHST_exact_decode(X,Y,opt)
         end
     end
   
-    function [p_,p] = get_univariate_pval(X_proj, Y_proj)
-        signeddistfun = @(a,b) (a-b);
-
-        if del_fn == 0
-            del = signeddistfun(X_proj,Y_proj); 
-        elseif del_fn == 1
-            del = pdist2(X_proj, Y_proj, signeddistfun);
-        end
-        del = del(:);
-        [~,pdf_x,x,~] = kde(del);
-        p_ = sum(pdf_x(x<=0))./sum(pdf_x);
-        p = min(p_, 1-p_)*2;
-    end
+    
 
 end
