@@ -29,6 +29,8 @@ function unpackPLXData(inputarg)
     if nargin < 1
         [fn, path] = uigetfile('.plx');
         filename = [path, fn];
+        extract_and_save();
+        clear filename
     elseif iscell(inputarg)
         for ai = 1:length(inputarg)
             filename = inputarg{ai};
@@ -64,6 +66,7 @@ function unpackPLXData(inputarg)
         RSVP.spikedata = getSpikeData('RSVP');
 
         % Save data
+        
         outfn = strrep(filename, '.plx', '.mat');
         save(outfn, 'M2S', 'RSVP', 'strobes', 'strobe_times');
         display(['Saved to ...', filename]);
@@ -76,16 +79,31 @@ function unpackPLXData(inputarg)
         [~,strobe_times,strobes] = plx_event_ts(filename, 257);
         tscounts = plx_info(filename, 0);
             % correct for plexon offset bug, convert to ms
-        strobes = strobes(2:end); 
-        strobe_times = strobe_times(1:end-1) .* 1000;
+        % is there a plexon bug????
+        strobe_ms_bug = true;
+        if strobe_ms_bug
+            strobes = strobes(2:end); 
+            strobe_times = strobe_times(1:end-1) .* 1000;
+        else
+            strobe_times = strobe_times .* 1000;
+        end
         
             % repeat strobes bug?? if the same strobe is sent twice -
             % ignore second
-        t = find((strobes(1:end-1) == strobes(2:end)) & (strobes(1:end-1)~=0));
-        t = setdiff(1:length(strobes), t);
-        strobes = strobes(t);
-        strobe_times = strobe_times(t);
+        repeat_strobe_bug = true;
+        if repeat_strobe_bug
+            t = find((strobes(1:end-1) == strobes(2:end)) & (strobes(1:end-1)~=0));
+            t = setdiff(1:length(strobes), t);
+            strobes = strobes(t);
+            strobe_times = strobe_times(t);
+        end
         
+        start_sync = true;% don't keep strobes sent before sync
+        if start_sync
+            t = ~ismember(strobes, [2]);
+            strobes = strobes(t);
+            strobe_times = strobe_times(t);
+        end
     end
 
     function run_sanity_check()
@@ -93,6 +111,7 @@ function unpackPLXData(inputarg)
         
         [~, sample_pres_t] = getStrobeSequence(SAMPLEON,SAMPLEOFF,1);
         assert(abs(mean(sample_pres_t) - 100) < 20);
+        display('Sanity check')
     end
 
     function [s12, del_t] = getStrobeSequence(strobe1, strobe2, interval)
@@ -123,10 +142,10 @@ function unpackPLXData(inputarg)
                     win = 600;
                     numwin = 5;
                 end
-                [spks, meanwave] = get_data_unit(ch, u, win, numwin);
+                [spks, meanwave, spkt] = get_data_unit(ch, u, win, numwin);
                 spikedata.(['ch',num2str(ch), 'u', num2str(u)]).FR = spks;
                 spikedata.(['ch',num2str(ch), 'u', num2str(u)]).waves = meanwave;
-%                 spikedata.(['ch',num2str(ch), 'u', num2str(u)]).spkt = spkt;
+                spikedata.(['ch',num2str(ch), 'u', num2str(u)]).spkt = spkt;
             end
         end
     end
@@ -139,7 +158,7 @@ function unpackPLXData(inputarg)
         
         [~, spk_t] = plx_ts(filename, ch, u);
         spk_t = spk_t .* 1000;
-%         allSpikes = spk_t;
+        allSpikes = spk_t;
         
         for t_i = 1:nTrials
             t_son = find(trial_strobes(t_i,:) == SAMPLEON);
